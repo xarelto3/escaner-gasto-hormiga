@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+<title>Escáner de Gasto Hormiga</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link
+  href="https://fonts.googleapis.com/css2?family=Special+Elite&family=IBM+Plex+Mono:wght@400;600&family=Work+Sans:wght@400;500;600&display=swap"
+  rel="stylesheet"
+/>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  @keyframes printIn {
+    from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .print-line { animation: printIn 0.35s ease-out forwards; opacity: 0; }
+  @keyframes pulseDot {
+    0%, 100% { opacity: 0.25; }
+    50% { opacity: 1; }
+  }
+  .pulse-dot { animation: pulseDot 1s infinite; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<script type="text/babel">
+const { useState, useEffect, useCallback, useRef } = React;
+
+const COLORS = {
+  counter: "#2B2724",
+  counterDark: "#1F1C19",
+  paper: "#F0EBE0",
+  paperShadow: "rgba(0,0,0,0.35)",
+  ink: "#1C1A17",
+  inkSoft: "#6B6358",
+  stamp: "#B8472F",
+  sage: "#4F6B52",
+  gold: "#B8923C",
+};
+
+const CATEGORY_STYLE = {
+  "Comida": { color: "#4F6B52", label: "Comida" },
+  "Bebidas": { color: "#3E6B8A", label: "Bebidas" },
+  "Snacks y Dulces": { color: "#B8472F", label: "Snacks y Dulces" },
+  "Hogar": { color: "#8A6A3E", label: "Hogar" },
+  "Cuidado Personal": { color: "#7A5C8A", label: "Cuidado Personal" },
+  "Mascotas": { color: "#3E8A78", label: "Mascotas" },
+  "Otros": { color: "#6B6358", label: "Otros" },
+};
+const CATEGORY_LIST = Object.keys(CATEGORY_STYLE);
+
+function monthKey(date = new Date()) {
+  return `gasto-hormiga:${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+function monthLabel(date = new Date()) {
+  const s = date.toLocaleDateString("es-CL", { month: "long", year: "numeric" });
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+function clp(n) {
+  return new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 }).format(n || 0);
+}
+
+function Row({ label, value, bold, color }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "'IBM Plex Mono', monospace", fontSize: bold ? 15 : 13, fontWeight: bold ? 700 : 500, color: color || COLORS.ink, padding: "3px 0" }}>
+      <span>{label}</span><span>{value}</span>
+    </div>
+  );
+}
+
+function btnPrimary() {
+  return { display: "inline-flex", alignItems: "center", background: COLORS.ink, color: COLORS.paper, border: "none", borderRadius: 6, padding: "10px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" };
+}
+function btnGhost() {
+  return { display: "inline-flex", alignItems: "center", background: "transparent", color: COLORS.ink, border: `1px solid ${COLORS.inkSoft}`, borderRadius: 6, padding: "10px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" };
+}
+function inputStyle() {
+  return { width: "100%", border: `1px solid ${COLORS.inkSoft}`, borderRadius: 6, padding: "9px 10px", fontSize: 13.5, fontFamily: "'IBM Plex Mono', monospace", background: "#fff", color: COLORS.ink };
+}
+function toggleStyle(active, color) {
+  return { flex: 1, border: `1px solid ${active ? color : "rgba(0,0,0,0.15)"}`, background: active ? `${color}1A` : "transparent", color: active ? color : COLORS.inkSoft, borderRadius: 6, padding: "9px 10px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" };
+}
+
+function App() {
+  const [preview, setPreview] = useState(null);
+  const [imageData, setImageData] = useState(null);
+  const [mediaType, setMediaType] = useState("image/jpeg");
+  const [status, setStatus] = useState("idle"); // idle | scanning | done | error | saved
+  const [result, setResult] = useState(null);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [monthlyTotal, setMonthlyTotal] = useState(0);
+  const [manualMode, setManualMode] = useState(false);
+  const [manualItems, setManualItems] = useState([]);
+  const [manualName, setManualName] = useState("");
+  const [manualPrice, setManualPrice] = useState("");
+  const [manualCategory, setManualCategory] = useState("Comida");
+  const [manualEssential, setManualEssential] = useState(true);
+  const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(monthKey());
+      setMonthlyTotal(raw ? JSON.parse(raw) : 0);
+    } catch {
+      setMonthlyTotal(0);
+    }
+  }, []);
+
+  const handleFile = useCallback((e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    setMediaType(file.type || "image/jpeg");
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result;
+      setPreview(dataUrl);
+      setImageData(dataUrl.split(",")[1]);
+      setStatus("idle");
+      setResult(null);
+      setErrorMsg("");
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
+  const handleScan = useCallback(async () => {
+    if (!imageData) return;
+    setStatus("scanning");
+    setErrorMsg("");
+    try {
+      const response = await fetch("/api/scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: imageData, mediaType }),
+      });
+      const parsed = await response.json();
+      if (parsed.error) {
+        setErrorMsg(parsed.error);
+        setStatus("error");
+        return;
+      }
+      setResult(parsed);
+      setStatus("done");
+    } catch {
+      setErrorMsg("Algo falló leyendo el ticket. Prueba de nuevo.");
+      setStatus("error");
+    }
+  }, [imageData, mediaType]);
+
+  const totals = result
+    ? result.items.reduce((acc, it) => {
+        acc.total += Number(it.price) || 0;
+        if (it.essential) acc.necesario += Number(it.price) || 0;
+        else acc.hormiga += Number(it.price) || 0;
+        return acc;
+      }, { total: 0, necesario: 0, hormiga: 0 })
+    : null;
+
+  const handleSave = useCallback(() => {
+    if (!totals) return;
+    const newTotal = monthlyTotal + totals.hormiga;
+    try {
+      localStorage.setItem(monthKey(), JSON.stringify(newTotal));
+      setMonthlyTotal(newTotal);
+      setStatus("saved");
+    } catch {
+      setErrorMsg("No pude guardar el acumulado, pero tu desglose sigue arriba.");
+    }
+  }, [totals, monthlyTotal]);
+
+  const addManualItem = useCallback(() => {
+    const price = Number(manualPrice);
+    if (!manualName.trim() || !price || price <= 0) return;
+    setManualItems((prev) => [...prev, { name: manualName.trim(), price, category: manualCategory, essential: manualEssential }]);
+    setManualName("");
+    setManualPrice("");
+  }, [manualName, manualPrice, manualCategory, manualEssential]);
+
+  const removeManualItem = useCallback((index) => {
+    setManualItems((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const finalizeManual = useCallback(() => {
+    if (manualItems.length === 0) return;
+    setResult({ store: "Compra a mano", items: manualItems });
+    setStatus("done");
+  }, [manualItems]);
+
+  const cancelManual = useCallback(() => {
+    setManualMode(false);
+    setManualItems([]);
+    setManualName("");
+    setManualPrice("");
+  }, []);
+
+  const reset = () => {
+    setPreview(null);
+    setImageData(null);
+    setResult(null);
+    setStatus("idle");
+    setErrorMsg("");
+    setManualMode(false);
+    setManualItems([]);
+    setManualName("");
+    setManualPrice("");
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", background: `radial-gradient(circle at 50% 0%, ${COLORS.counterDark}, ${COLORS.counter})`, display: "flex", justifyContent: "center", padding: "32px 16px 64px", fontFamily: "'Work Sans', sans-serif" }}>
+      <div style={{ width: "100%", maxWidth: 420 }}>
+        <div style={{ background: COLORS.counterDark, borderRadius: "10px 10px 0 0", padding: "18px 20px 22px", textAlign: "center" }}>
+          <div style={{ width: 48, height: 4, background: COLORS.gold, margin: "0 auto 10px", borderRadius: 2 }} />
+          <h1 style={{ fontFamily: "'Special Elite', monospace", color: COLORS.paper, fontSize: 22, margin: 0, letterSpacing: 1 }}>Escáner de Gasto Hormiga</h1>
+          <p style={{ color: COLORS.gold, fontSize: 13, margin: "6px 0 0", fontFamily: "'IBM Plex Mono', monospace" }}>sube tu ticket. sin juicios, solo datos.</p>
+        </div>
+
+        <div style={{ background: COLORS.paper, boxShadow: `0 18px 40px ${COLORS.paperShadow}`, borderRadius: "0 0 4px 4px", padding: "26px 22px 28px", color: COLORS.ink }}>
+
+          {status === "idle" && !preview && !manualMode && (
+            <div>
+              <div onClick={() => fileInputRef.current && fileInputRef.current.click()} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, border: `1.5px dashed ${COLORS.inkSoft}`, borderRadius: 8, padding: "40px 16px", cursor: "pointer", textAlign: "center" }}>
+                <span style={{ fontSize: 28 }}>📷</span>
+                <span style={{ fontSize: 14, color: COLORS.inkSoft }}>Sube una foto de tu ticket de compra</span>
+                <span style={{ marginTop: 6, background: COLORS.ink, color: COLORS.paper, padding: "8px 18px", borderRadius: 6, fontSize: 13, fontWeight: 600 }}>Elegir foto</span>
+                <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFile} style={{ display: "none" }} />
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "18px 0" }}>
+                <div style={{ flex: 1, height: 1, background: COLORS.inkSoft, opacity: 0.3 }} />
+                <span style={{ fontSize: 11, color: COLORS.inkSoft, fontFamily: "'IBM Plex Mono', monospace" }}>o</span>
+                <div style={{ flex: 1, height: 1, background: COLORS.inkSoft, opacity: 0.3 }} />
+              </div>
+
+              <button onClick={() => setManualMode(true)} style={{ ...btnGhost(), width: "100%", justifyContent: "center" }}>
+                ✏️ No me dieron boleta — agregar a mano
+              </button>
+            </div>
+          )}
+
+          {status === "idle" && !preview && manualMode && (
+            <div>
+              <p style={{ fontSize: 12.5, color: COLORS.inkSoft, marginBottom: 16, lineHeight: 1.5 }}>
+                Pasa, no todos los almacenes dan boleta. Anota cada producto con su precio aproximado.
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
+                <input type="text" placeholder="Nombre del producto" value={manualName} onChange={(e) => setManualName(e.target.value)} style={inputStyle()} />
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input type="number" placeholder="Precio" value={manualPrice} onChange={(e) => setManualPrice(e.target.value)} style={{ ...inputStyle(), flex: 1 }} />
+                  <select value={manualCategory} onChange={(e) => setManualCategory(e.target.value)} style={{ ...inputStyle(), flex: 1 }}>
+                    {CATEGORY_LIST.map((c) => (<option key={c} value={c}>{c}</option>))}
+                  </select>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={() => setManualEssential(true)} style={toggleStyle(manualEssential, COLORS.sage)}>● Necesario</button>
+                  <button onClick={() => setManualEssential(false)} style={toggleStyle(!manualEssential, COLORS.stamp)}>○ Gasto hormiga</button>
+                </div>
+                <button onClick={addManualItem} disabled={!manualName.trim() || !Number(manualPrice)} style={{ ...btnPrimary(), justifyContent: "center", opacity: !manualName.trim() || !Number(manualPrice) ? 0.4 : 1 }}>
+                  ➕ Agregar producto
+                </button>
+              </div>
+
+              {manualItems.length > 0 && (
+                <div style={{ marginTop: 16, marginBottom: 16 }}>
+                  {manualItems.map((it, i) => {
+                    const cat = CATEGORY_STYLE[it.category] || CATEGORY_STYLE["Otros"];
+                    return (
+                      <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, padding: "6px 0", borderBottom: `1px dotted ${COLORS.inkSoft}` }}>
+                        <span>
+                          <span>{it.name}</span><br />
+                          <span style={{ fontSize: 10.5, color: cat.color, fontWeight: 600 }}>{it.essential ? "● " : "○ "}{cat.label}</span>
+                        </span>
+                        <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontWeight: 600 }}>{clp(it.price)}</span>
+                          <button onClick={() => removeManualItem(i)} style={{ background: "none", border: "none", cursor: "pointer", padding: 2 }} aria-label="Quitar producto">🗑</button>
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div style={{ display: "flex", gap: 10 }}>
+                <button onClick={finalizeManual} disabled={manualItems.length === 0} style={{ ...btnPrimary(), flex: 1, justifyContent: "center", opacity: manualItems.length === 0 ? 0.4 : 1 }}>✓ Ver mi resumen</button>
+                <button onClick={cancelManual} style={btnGhost()}>Cancelar</button>
+              </div>
+            </div>
+          )}
+
+          {preview && status !== "done" && status !== "saved" && (
+            <div style={{ textAlign: "center" }}>
+              <img src={preview} alt="Ticket subido" style={{ maxWidth: "100%", maxHeight: 220, borderRadius: 6, marginBottom: 16, boxShadow: "0 4px 14px rgba(0,0,0,0.2)" }} />
+              {status === "idle" && (
+                <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+                  <button onClick={handleScan} style={btnPrimary()}>🔍 Escanear ticket</button>
+                  <button onClick={reset} style={btnGhost()}>Cambiar foto</button>
+                </div>
+              )}
+              {status === "scanning" && (
+                <p style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 14, color: COLORS.inkSoft }}>
+                  Leyendo tu ticket<span className="pulse-dot">.</span><span className="pulse-dot" style={{ animationDelay: "0.2s" }}>.</span><span className="pulse-dot" style={{ animationDelay: "0.4s" }}>.</span>
+                </p>
+              )}
+              {status === "error" && (
+                <div style={{ textAlign: "center" }}>
+                  <p style={{ fontSize: 22, marginBottom: 6 }}>⚠️</p>
+                  <p style={{ fontSize: 13, color: COLORS.stamp, marginBottom: 12 }}>{errorMsg}</p>
+                  <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+                    <button onClick={handleScan} style={btnPrimary()}>Reintentar</button>
+                    <button onClick={reset} style={btnGhost()}>Otra foto</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {(status === "done" || status === "saved") && result && totals && (
+            <div>
+              <p style={{ textAlign: "center", fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, letterSpacing: 1.5, color: COLORS.inkSoft, marginBottom: 14, textTransform: "uppercase" }}>
+                Ticket — {result.store || "Tu compra"}
+              </p>
+              <div>
+                {result.items.map((it, i) => {
+                  const cat = CATEGORY_STYLE[it.category] || CATEGORY_STYLE["Otros"];
+                  return (
+                    <div key={i} className="print-line" style={{ animationDelay: `${i * 0.07}s`, display: "flex", justifyContent: "space-between", alignItems: "baseline", fontFamily: "'IBM Plex Mono', monospace", fontSize: 13.5, padding: "6px 0", borderBottom: i === result.items.length - 1 ? "none" : `1px dotted ${COLORS.inkSoft}` }}>
+                      <span>
+                        <span>{it.name}</span><br />
+                        <span style={{ fontSize: 10.5, color: cat.color, fontWeight: 600 }}>{it.essential ? "● " : "○ "}{cat.label}{!it.essential ? " · hormiga" : ""}</span>
+                      </span>
+                      <span style={{ fontWeight: 600, whiteSpace: "nowrap", marginLeft: 10 }}>{clp(it.price)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ marginTop: 18, borderTop: `2px solid ${COLORS.ink}`, paddingTop: 12 }}>
+                <Row label="Total ticket" value={clp(totals.total)} bold />
+                <Row label="● Necesario" value={clp(totals.necesario)} color={COLORS.sage} />
+                <Row label="○ Gasto hormiga" value={clp(totals.hormiga)} color={COLORS.stamp} bold />
+              </div>
+              <p style={{ textAlign: "center", fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: COLORS.inkSoft, margin: "22px 0 10px", letterSpacing: 2 }}>- - - - - ✂ corte aquí - - - - -</p>
+              {status === "done" && (
+                <button onClick={handleSave} style={{ ...btnPrimary(), width: "100%", justifyContent: "center" }}>✓ Guardar y sumar al mes</button>
+              )}
+              {status === "saved" && (
+                <div style={{ background: "rgba(79,107,82,0.1)", border: `1px solid ${COLORS.sage}`, borderRadius: 6, padding: "12px 14px", textAlign: "center" }}>
+                  <p style={{ margin: 0, fontSize: 13, color: COLORS.sage, fontWeight: 600 }}>Sumado a tu acumulado de {monthLabel()}</p>
+                </div>
+              )}
+              <button onClick={reset} style={{ ...btnGhost(), width: "100%", justifyContent: "center", marginTop: 10 }}>↺ Escanear otro ticket</button>
+            </div>
+          )}
+        </div>
+
+        <div style={{ marginTop: 16, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, padding: "14px 18px", textAlign: "center" }}>
+          <p style={{ margin: 0, fontSize: 11, color: COLORS.gold, letterSpacing: 1, textTransform: "uppercase" }}>Gasto hormiga acumulado — {monthLabel()}</p>
+          <p style={{ margin: "4px 0 0", fontFamily: "'IBM Plex Mono', monospace", fontSize: 24, fontWeight: 600, color: COLORS.paper }}>{clp(monthlyTotal)}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
