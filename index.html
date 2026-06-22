@@ -95,6 +95,30 @@ function monthLabel(date = new Date()) {
   });
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
+function labelFromYM(ym) {
+  const partes = ym.split("-");
+  const y = Number(partes[0]);
+  const m = Number(partes[1]);
+  return monthLabel(new Date(y, m - 1, 1));
+}
+function getAllMonths() {
+  const meses = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.indexOf("gasto-hormiga:") === 0) {
+        const ym = k.replace("gasto-hormiga:", "");
+        let val = 0;
+        try {
+          val = JSON.parse(localStorage.getItem(k)) || 0;
+        } catch {}
+        meses.push({ ym, total: val });
+      }
+    }
+  } catch {}
+  meses.sort((a, b) => (a.ym < b.ym ? 1 : -1));
+  return meses;
+}
 function clp(n) {
   return new Intl.NumberFormat("es-CL", {
     style: "currency",
@@ -189,6 +213,7 @@ function App() {
   const [manualPrice, setManualPrice] = useState("");
   const [manualCategory, setManualCategory] = useState("Comida");
   const [manualEssential, setManualEssential] = useState(true);
+  const [allMonths, setAllMonths] = useState([]);
   const fileInputRef = useRef(null);
   useEffect(() => {
     try {
@@ -203,6 +228,7 @@ function App() {
     } catch {
       setMonthlyHistory([]);
     }
+    setAllMonths(getAllMonths());
   }, []);
   const handleFile = useCallback(e => {
     const file = e.target.files && e.target.files[0];
@@ -273,6 +299,7 @@ function App() {
       localStorage.setItem(historyKey(), JSON.stringify(newHistory));
       setMonthlyTotal(newTotal);
       setMonthlyHistory(newHistory);
+      setAllMonths(getAllMonths());
       setStatus("saved");
     } catch {
       setErrorMsg("No pude guardar el acumulado, pero tu desglose sigue arriba.");
@@ -326,23 +353,56 @@ function App() {
     reset();
   };
 
+  const handleResetMonth = () => {
+    const seguro = window.confirm("Esto borra el acumulado y el detalle de " + monthLabel() + ". ¿Seguro que quieres reiniciar?");
+    if (!seguro) return;
+    try {
+      localStorage.removeItem(monthKey());
+      localStorage.removeItem(historyKey());
+    } catch {}
+    setMonthlyTotal(0);
+    setMonthlyHistory([]);
+    setShowHistory(false);
+    setAllMonths(getAllMonths());
+  };
+
   let historyToggleBtn = null;
-  if (monthlyHistory.length > 0) {
+  if (monthlyHistory.length > 0 || monthlyTotal > 0) {
     const etiqueta = showHistory ? "Ocultar detalle" : ("Ver detalle (" + monthlyHistory.length + (monthlyHistory.length === 1 ? " ticket)" : " tickets)"));
-    historyToggleBtn = React.createElement("button", {
-      onClick: () => setShowHistory(s => !s),
+    const botones = [];
+    if (monthlyHistory.length > 0) {
+      botones.push(React.createElement("button", {
+        key: "toggle",
+        onClick: () => setShowHistory(s => !s),
+        style: {
+          background: "transparent",
+          border: "1px solid rgba(255,255,255,0.25)",
+          color: COLORS.gold,
+          borderRadius: 6,
+          padding: "7px 14px",
+          fontSize: 12,
+          fontWeight: 600,
+          cursor: "pointer"
+        }
+      }, etiqueta));
+    }
+    botones.push(React.createElement("button", {
+      key: "reset",
+      onClick: handleResetMonth,
       style: {
-        marginTop: 10,
         background: "transparent",
-        border: "1px solid rgba(255,255,255,0.25)",
-        color: COLORS.gold,
+        border: "1px solid rgba(255,255,255,0.15)",
+        color: "rgba(255,255,255,0.5)",
         borderRadius: 6,
         padding: "7px 14px",
         fontSize: 12,
         fontWeight: 600,
         cursor: "pointer"
       }
-    }, etiqueta);
+    }, "Reiniciar mes"));
+    historyToggleBtn = React.createElement("div", {
+      style: { display: "flex", gap: 8, justifyContent: "center", marginTop: 10, flexWrap: "wrap" }
+    }, ...botones);
   }
 
   let historyListEl = null;
@@ -373,6 +433,42 @@ function App() {
     historyListEl = React.createElement("div", {
       style: { marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }
     }, ...tarjetas);
+  }
+
+  let comparisonEl = null;
+  if (allMonths.length > 1) {
+    const maxTotal = Math.max(...allMonths.map(m => m.total), 1);
+    const claveActual = monthKey();
+    const filas = allMonths.map(m => {
+      const esActual = ("gasto-hormiga:" + m.ym) === claveActual;
+      const pct = Math.round((m.total / maxTotal) * 100);
+      return React.createElement("div", {
+        key: m.ym,
+        style: { marginBottom: 10 }
+      },
+        React.createElement("div", {
+          style: { display: "flex", justifyContent: "space-between", fontSize: 11.5, marginBottom: 3, color: esActual ? COLORS.gold : "rgba(255,255,255,0.7)", fontWeight: esActual ? 700 : 500 }
+        },
+          React.createElement("span", null, labelFromYM(m.ym) + (esActual ? " (actual)" : "")),
+          React.createElement("span", { style: { fontFamily: "'IBM Plex Mono', monospace" } }, clp(m.total))
+        ),
+        React.createElement("div", {
+          style: { background: "rgba(255,255,255,0.1)", borderRadius: 4, height: 8, overflow: "hidden" }
+        },
+          React.createElement("div", {
+            style: { background: esActual ? COLORS.gold : "rgba(255,255,255,0.35)", height: "100%", width: pct + "%" }
+          })
+        )
+      );
+    });
+    comparisonEl = React.createElement("div", {
+      style: { marginTop: 16, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, padding: "14px 18px" }
+    },
+      React.createElement("p", {
+        style: { margin: "0 0 12px", fontSize: 11, color: COLORS.gold, letterSpacing: 1, textTransform: "uppercase", textAlign: "center" }
+      }, "Comparativa mensual"),
+      ...filas
+    );
   }
 
   return /*#__PURE__*/React.createElement("div", {
@@ -817,7 +913,7 @@ function App() {
       fontWeight: 600,
       color: COLORS.paper
     }
-  }, clp(monthlyTotal)), historyToggleBtn), historyListEl));
+  }, clp(monthlyTotal)), historyToggleBtn), historyListEl, comparisonEl));
 }
 ReactDOM.createRoot(document.getElementById("root")).render(/*#__PURE__*/React.createElement(App, null));
 </script>
