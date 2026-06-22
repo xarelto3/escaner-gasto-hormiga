@@ -292,6 +292,13 @@ function App() {
     setManualName("");
     setManualPrice("");
   };
+  const resetConfirmado = () => {
+    if (status === "done") {
+      const seguro = window.confirm("Este ticket todavia no se ha guardado. Si continuas, se va a perder. ¿Quieres descartarlo igual?");
+      if (!seguro) return;
+    }
+    reset();
+  };
   return /*#__PURE__*/React.createElement("div", {
     style: {
       minHeight: "100vh",
@@ -702,7 +709,7 @@ function App() {
       fontWeight: 600
     }
   }, "Sumado a tu acumulado de ", monthLabel())), /*#__PURE__*/React.createElement("button", {
-    onClick: reset,
+    onClick: resetConfirmado,
     style: {
       ...btnGhost(),
       width: "100%",
