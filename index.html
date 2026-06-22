@@ -325,6 +325,56 @@ function App() {
     }
     reset();
   };
+
+  let historyToggleBtn = null;
+  if (monthlyHistory.length > 0) {
+    const etiqueta = showHistory ? "Ocultar detalle" : ("Ver detalle (" + monthlyHistory.length + (monthlyHistory.length === 1 ? " ticket)" : " tickets)"));
+    historyToggleBtn = React.createElement("button", {
+      onClick: () => setShowHistory(s => !s),
+      style: {
+        marginTop: 10,
+        background: "transparent",
+        border: "1px solid rgba(255,255,255,0.25)",
+        color: COLORS.gold,
+        borderRadius: 6,
+        padding: "7px 14px",
+        fontSize: 12,
+        fontWeight: 600,
+        cursor: "pointer"
+      }
+    }, etiqueta);
+  }
+
+  let historyListEl = null;
+  if (showHistory && monthlyHistory.length > 0) {
+    const tarjetas = monthlyHistory.map((entry, idx) => {
+      const encabezado = React.createElement("div", {
+        style: { display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }
+      },
+        React.createElement("span", {
+          style: { fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: COLORS.inkSoft, textTransform: "uppercase", letterSpacing: 1 }
+        }, entry.store + " · " + fechaCorta(entry.date)),
+        React.createElement("span", {
+          style: { fontWeight: 700, fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, color: COLORS.ink }
+        }, clp(entry.total))
+      );
+      const lineasItems = entry.items.map((it, i) => React.createElement("div", {
+        key: i,
+        style: { display: "flex", justifyContent: "space-between", fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: it.essential ? COLORS.inkSoft : COLORS.stamp, padding: "2px 0" }
+      },
+        React.createElement("span", null, (it.essential ? "● " : "○ ") + it.name),
+        React.createElement("span", null, clp(it.price))
+      ));
+      return React.createElement("div", {
+        key: idx,
+        style: { background: COLORS.paper, borderRadius: 6, padding: "10px 12px", boxShadow: "0 4px 10px rgba(0,0,0,0.25)" }
+      }, encabezado, ...lineasItems);
+    });
+    historyListEl = React.createElement("div", {
+      style: { marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }
+    }, ...tarjetas);
+  }
+
   return /*#__PURE__*/React.createElement("div", {
     style: {
       minHeight: "100vh",
@@ -767,67 +817,7 @@ function App() {
       fontWeight: 600,
       color: COLORS.paper
     }
-  }, clp(monthlyTotal)), monthlyHistory.length > 0 && /*#__PURE__*/React.createElement("button", {
-    onClick: () => setShowHistory(s => !s),
-    style: {
-      marginTop: 10,
-      background: "transparent",
-      border: "1px solid rgba(255,255,255,0.25)",
-      color: COLORS.gold,
-      borderRadius: 6,
-      padding: "7px 14px",
-      fontSize: 12,
-      fontWeight: 600,
-      cursor: "pointer"
-    }
-  }, showHistory ? "Ocultar detalle" : `Ver detalle (${monthlyHistory.length} ticket${monthlyHistory.length === 1 ? "" : "s"})`)), showHistory && monthlyHistory.length > 0 && /*#__PURE__*/React.createElement("div", {
-    style: {
-      marginTop: 10,
-      display: "flex",
-      flexDirection: "column",
-      gap: 8
-    }
-  }, monthlyHistory.map((entry, idx) => /*#__PURE__*/React.createElement("div", {
-    key: idx,
-    style: {
-      background: COLORS.paper,
-      borderRadius: 6,
-      padding: "10px 12px",
-      boxShadow: "0 4px 10px rgba(0,0,0,0.25)"
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "baseline",
-      marginBottom: 4
-    }
-  }, /*#__PURE__*/React.createElement("span", {
-    style: {
-      fontFamily: "'IBM Plex Mono', monospace",
-      fontSize: 11,
-      color: COLORS.inkSoft,
-      textTransform: "uppercase",
-      letterSpacing: 1
-    }
-  }, entry.store, " · ", fechaCorta(entry.date)), /*#__PURE__*/React.createElement("span", {
-    style: {
-      fontWeight: 700,
-      fontFamily: "'IBM Plex Mono', monospace",
-      fontSize: 13,
-      color: COLORS.ink
-    }
-  }, clp(entry.total))), entry.items.map((it, i) => /*#__PURE__*/React.createElement("div", {
-    key: i,
-    style: {
-      display: "flex",
-      justifyContent: "space-between",
-      fontFamily: "'IBM Plex Mono', monospace",
-      fontSize: 12,
-      color: it.essential ? COLORS.inkSoft : COLORS.stamp,
-      padding: "2px 0"
-    }
-  }, /*#__PURE__*/React.createElement("span", null, it.essential ? "● " : "○ ", it.name), /*#__PURE__*/React.createElement("span", null, clp(it.price)))))))));
+  }, clp(monthlyTotal)), historyToggleBtn), historyListEl));
 }
 ReactDOM.createRoot(document.getElementById("root")).render(/*#__PURE__*/React.createElement(App, null));
 </script>
