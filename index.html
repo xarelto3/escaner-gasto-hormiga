@@ -81,6 +81,13 @@ const CATEGORY_LIST = Object.keys(CATEGORY_STYLE);
 function monthKey(date = new Date()) {
   return `gasto-hormiga:${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
+function historyKey(date = new Date()) {
+  return `gasto-historial:${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+function fechaCorta(iso) {
+  const d = new Date(iso);
+  return d.toLocaleDateString("es-CL", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+}
 function monthLabel(date = new Date()) {
   const s = date.toLocaleDateString("es-CL", {
     month: "long",
@@ -174,6 +181,8 @@ function App() {
   const [result, setResult] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [monthlyTotal, setMonthlyTotal] = useState(0);
+  const [monthlyHistory, setMonthlyHistory] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
   const [manualMode, setManualMode] = useState(false);
   const [manualItems, setManualItems] = useState([]);
   const [manualName, setManualName] = useState("");
@@ -187,6 +196,12 @@ function App() {
       setMonthlyTotal(raw ? JSON.parse(raw) : 0);
     } catch {
       setMonthlyTotal(0);
+    }
+    try {
+      const rawHist = localStorage.getItem(historyKey());
+      setMonthlyHistory(rawHist ? JSON.parse(rawHist) : []);
+    } catch {
+      setMonthlyHistory([]);
     }
   }, []);
   const handleFile = useCallback(e => {
@@ -244,14 +259,25 @@ function App() {
   const handleSave = useCallback(() => {
     if (!totals) return;
     const newTotal = monthlyTotal + totals.hormiga;
+    const entry = {
+      date: new Date().toISOString(),
+      store: result.store || "Ticket",
+      items: result.items,
+      total: totals.total,
+      necesario: totals.necesario,
+      hormiga: totals.hormiga
+    };
+    const newHistory = [entry, ...monthlyHistory];
     try {
       localStorage.setItem(monthKey(), JSON.stringify(newTotal));
+      localStorage.setItem(historyKey(), JSON.stringify(newHistory));
       setMonthlyTotal(newTotal);
+      setMonthlyHistory(newHistory);
       setStatus("saved");
     } catch {
       setErrorMsg("No pude guardar el acumulado, pero tu desglose sigue arriba.");
     }
-  }, [totals, monthlyTotal]);
+  }, [totals, monthlyTotal, monthlyHistory, result]);
   const addManualItem = useCallback(() => {
     const price = Number(manualPrice);
     if (!manualName.trim() || !price || price <= 0) return;
@@ -741,7 +767,67 @@ function App() {
       fontWeight: 600,
       color: COLORS.paper
     }
-  }, clp(monthlyTotal)))));
+  }, clp(monthlyTotal)), monthlyHistory.length > 0 && /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowHistory(s => !s),
+    style: {
+      marginTop: 10,
+      background: "transparent",
+      border: "1px solid rgba(255,255,255,0.25)",
+      color: COLORS.gold,
+      borderRadius: 6,
+      padding: "7px 14px",
+      fontSize: 12,
+      fontWeight: 600,
+      cursor: "pointer"
+    }
+  }, showHistory ? "Ocultar detalle" : `Ver detalle (${monthlyHistory.length} ticket${monthlyHistory.length === 1 ? "" : "s"})`)), showHistory && monthlyHistory.length > 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 10,
+      display: "flex",
+      flexDirection: "column",
+      gap: 8
+    }
+  }, monthlyHistory.map((entry, idx) => /*#__PURE__*/React.createElement("div", {
+    key: idx,
+    style: {
+      background: COLORS.paper,
+      borderRadius: 6,
+      padding: "10px 12px",
+      boxShadow: "0 4px 10px rgba(0,0,0,0.25)"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "baseline",
+      marginBottom: 4
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontFamily: "'IBM Plex Mono', monospace",
+      fontSize: 11,
+      color: COLORS.inkSoft,
+      textTransform: "uppercase",
+      letterSpacing: 1
+    }
+  }, entry.store, " · ", fechaCorta(entry.date)), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontWeight: 700,
+      fontFamily: "'IBM Plex Mono', monospace",
+      fontSize: 13,
+      color: COLORS.ink
+    }
+  }, clp(entry.total))), entry.items.map((it, i) => /*#__PURE__*/React.createElement("div", {
+    key: i,
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      fontFamily: "'IBM Plex Mono', monospace",
+      fontSize: 12,
+      color: it.essential ? COLORS.inkSoft : COLORS.stamp,
+      padding: "2px 0"
+    }
+  }, /*#__PURE__*/React.createElement("span", null, it.essential ? "● " : "○ ", it.name), /*#__PURE__*/React.createElement("span", null, clp(it.price)))))))));
 }
 ReactDOM.createRoot(document.getElementById("root")).render(/*#__PURE__*/React.createElement(App, null));
 </script>
