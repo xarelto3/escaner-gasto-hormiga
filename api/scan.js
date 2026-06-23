@@ -66,4 +66,8 @@ module.exports = async function handler(req, res) {
 
     const parsed = JSON.parse(text);
     res.status(200).json(parsed);
-  } catch
+  } catch (err) {
+    console.error("Error en /api/scan:", err);
+    res.status(200).json({ error: "Algo falló leyendo el ticket. Prueba de nuevo." });
+  }
+};
