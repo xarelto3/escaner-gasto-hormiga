@@ -35,6 +35,7 @@ const {
   useState,
   useEffect,
   useCallback,
+  useMemo,
   useRef
 } = React;
 const COLORS = {
@@ -79,6 +80,47 @@ const CATEGORY_STYLE = {
   }
 };
 const CATEGORY_LIST = Object.keys(CATEGORY_STYLE);
+
+// Reglas de auto-clasificación para el modo manual ("agregar a mano").
+// El escaneo con IA ya clasifica solo; esto replica esa lógica con un
+// diccionario de palabras clave para que el modo manual también lo haga,
+// sin necesidad de llamar a la API por cada producto tipeado.
+const KEYWORD_RULES = [
+  // Hogar — limpieza y mantención (necesario)
+  { kw: ["bolsa de basura", "bolsas de basura", "detergente", "lavaloza", "lejia", "lejía", "cloro", "papel higienico", "papel higiénico", "toalla de papel", "esponja", "escoba", "desinfectante", "gas", "lipigas", "abrasol", "vela", "pilas", "ampolleta"], category: "Hogar", essential: true },
+  // Cuidado Personal (necesario)
+  { kw: ["pañal", "panal", "sabanilla", "ropa interior desechable", "protect", "shampoo", "champu", "champú", "jabon", "jabón", "pasta de dientes", "cepillo de dientes", "desodorante", "papel confort", "toalla higienica", "toalla higiénica", "afeitar", "rastrillo"], category: "Cuidado Personal", essential: true },
+  // Mascotas (necesario)
+  { kw: ["alimento perro", "alimento gato", "comida perro", "comida gato", "arena gato", "dog chow", "cat chow", "purina", "pedigree", "whiskas"], category: "Mascotas", essential: true },
+  // Bebidas (depende: agua/leche necesario, bebidas/alcohol hormiga)
+  { kw: ["agua mineral", "leche"], category: "Bebidas", essential: true },
+  { kw: ["bebida", "gaseosa", "cerveza", "vino", "pisco", "jugo", "nectar", "néctar", "energetica", "energética", "red bull"], category: "Bebidas", essential: false },
+  // Snacks y Dulces (gasto hormiga casi siempre)
+  { kw: ["chocolate", "dulce", "caramelo", "galleta", "papas fritas", "snack", "helado", "te", "té", "cafe", "café", "alfajor", "chicle", "super8", "manjar"], category: "Snacks y Dulces", essential: false },
+  // Comida (necesario)
+  { kw: ["arroz", "fideo", "pasta", "pan", "harina", "aceite", "azucar", "azúcar", "sal", "carne", "pollo", "huevo", "verdura", "fruta", "queso", "mantequilla", "yogurt", "yogur", "cereal", "atun", "atún", "legumbre", "condimento"], category: "Comida", essential: true },
+];
+
+function normalize(text) {
+  return (text || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function guessCategory(name) {
+  const n = normalize(name);
+  if (!n.trim()) return null;
+  for (const rule of KEYWORD_RULES) {
+    for (const kw of rule.kw) {
+      if (n.indexOf(normalize(kw)) !== -1) {
+        return { category: rule.category, essential: rule.essential };
+      }
+    }
+  }
+  return null;
+}
+
 function monthKey(date = new Date()) {
   return `gasto-hormiga:${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
@@ -308,6 +350,16 @@ function App() {
     necesario: 0,
     hormiga: 0
   }) : null;
+  const todayTotal = useMemo(() => {
+    const today = new Date();
+    return monthlyHistory.reduce((sum, entry) => {
+      const d = new Date(entry.date);
+      const sameDay = d.getFullYear() === today.getFullYear() &&
+        d.getMonth() === today.getMonth() &&
+        d.getDate() === today.getDate();
+      return sameDay ? sum + (Number(entry.total) || 0) : sum;
+    }, 0);
+  }, [monthlyHistory]);
   const handleSave = useCallback(() => {
     if (!totals) return;
     const newTotal = monthlyTotal + totals.hormiga;
@@ -641,7 +693,15 @@ function App() {
     type: "text",
     placeholder: "Nombre del producto",
     value: manualName,
-    onChange: e => setManualName(e.target.value),
+    onChange: e => {
+      const value = e.target.value;
+      setManualName(value);
+      const guess = guessCategory(value);
+      if (guess) {
+        setManualCategory(guess.category);
+        setManualEssential(guess.essential);
+      }
+    },
     style: inputStyle()
   }), /*#__PURE__*/React.createElement("div", {
     style: {
@@ -915,6 +975,31 @@ function App() {
       marginTop: 10
     }
   }, "↺ Escanear otro ticket"))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 16,
+      background: "rgba(255,255,255,0.06)",
+      border: "1px solid rgba(255,255,255,0.1)",
+      borderRadius: 8,
+      padding: "14px 18px",
+      textAlign: "center"
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 11,
+      color: COLORS.gold,
+      letterSpacing: 1,
+      textTransform: "uppercase"
+    }
+  }, "Total gastado hoy"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: "4px 0 0",
+      fontFamily: "'IBM Plex Mono', monospace",
+      fontSize: 24,
+      fontWeight: 600,
+      color: COLORS.paper
+    }
+  }, clp(todayTotal))), /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: 16,
       background: "rgba(255,255,255,0.06)",
