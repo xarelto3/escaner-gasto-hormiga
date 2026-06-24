@@ -57,6 +57,21 @@ module.exports = async function handler(req, res) {
     });
 
     const data = await response.json();
+
+    // Si la API de Anthropic devolvió un error (auth, billing, modelo, etc.),
+    // mostramos el detalle real en vez de fallar genéricamente.
+    if (!response.ok) {
+      console.error("Error de la API de Anthropic:", response.status, JSON.stringify(data));
+      res.status(200).json({
+        error:
+          "Error de la IA (" +
+          response.status +
+          "): " +
+          (data && data.error && data.error.message ? data.error.message : "respuesta inesperada de la API."),
+      });
+      return;
+    }
+
     const text = (data.content || [])
       .filter((b) => b.type === "text")
       .map((b) => b.text)
@@ -64,10 +79,24 @@ module.exports = async function handler(req, res) {
       .replace(/```json|```/g, "")
       .trim();
 
-    const parsed = JSON.parse(text);
+    if (!text) {
+      console.error("Respuesta vacía de Anthropic:", JSON.stringify(data));
+      res.status(200).json({ error: "La IA no devolvió texto. Intenta con otra foto." });
+      return;
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch (parseErr) {
+      console.error("No se pudo parsear como JSON:", text);
+      res.status(200).json({ error: "La IA respondió en un formato inesperado. Intenta de nuevo." });
+      return;
+    }
+
     res.status(200).json(parsed);
   } catch (err) {
     console.error("Error en /api/scan:", err);
-    res.status(200).json({ error: "Algo falló leyendo el ticket. Prueba de nuevo." });
+    res.status(200).json({ error: "Algo falló leyendo el ticket (" + (err && err.message ? err.message : "error desconocido") + "). Prueba de nuevo." });
   }
 };
